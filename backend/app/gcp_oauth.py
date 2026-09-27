@@ -27,4 +27,5 @@ async def list_billing_accounts(access_token):
 
 def encrypt_tokens(key,token_response):
     return {"access_token_ciphertext":encrypt_secret(key,token_response["access_token"]),
-            "refresh_token_ciphertext":encrypt_secret(key,token_response["refresh_token"]) if token_response.get("refresh_token") else None}
+            "refresh_token_ciphertext":encrypt_secret(key,token_response["refresh_token"]) if token_response.get("refresh_token") else None,
+            "token_expires_at": time.time() + int(token_response["expires_in"]) if token_response.get("expires_in") else None}
