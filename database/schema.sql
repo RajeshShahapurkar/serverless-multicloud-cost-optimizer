@@ -1,16 +1,22 @@
 -- Core schema for the Serverless Multi-Cloud Cost Optimizer.
--- Owner-scoped RLS is applied in the live Supabase project.
+-- OAuth/client secrets are never stored in these public tables.
 
 create table if not exists public.cloud_accounts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   provider text not null check (provider in ('aws','gcp','azure')),
   display_name text not null,
-  status text not null default 'pending',
+  status text not null default 'pending'
+    check (status in ('pending','connected','error','disconnected')),
+  auth_method text not null default 'oauth',
   account_identifier text,
   region text,
+  token_expires_at timestamptz,
+  last_synced_at timestamptz,
+  error_message text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique (user_id, provider)
 );
 
 create table if not exists public.cloud_resources (
