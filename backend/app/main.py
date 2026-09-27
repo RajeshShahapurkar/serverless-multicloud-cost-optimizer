@@ -3,6 +3,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
