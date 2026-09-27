@@ -116,6 +116,7 @@ async def gcp_callback(code: str | None = None, state: str | None = None, error:
         "provider": "gcp",
         "access_token_ciphertext": encrypted["access_token_ciphertext"],
         "refresh_token_ciphertext": encrypted["refresh_token_ciphertext"],
+        "token_expires_at": datetime.fromtimestamp(encrypted["token_expires_at"], tz=timezone.utc).isoformat() if encrypted["token_expires_at"] else None,
         "scopes": GCP_SCOPES,
     }
     existing_token = await db(
