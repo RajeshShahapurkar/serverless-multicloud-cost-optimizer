@@ -1,0 +1,9 @@
+{
+  "name": "serverless-multicloud-cost-optimizer",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace frontend"
+  },
+  "workspaces": ["frontend"]
+}
