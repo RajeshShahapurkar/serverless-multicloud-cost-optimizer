@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "../../../../lib/supabase/server";
+import { createClient } from "../../../../../lib/supabase/server";
 
 const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
