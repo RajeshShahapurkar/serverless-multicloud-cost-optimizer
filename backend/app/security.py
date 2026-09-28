@@ -18,3 +18,7 @@ def verify_state(secret:str,state:str,max_age_seconds:int=600)->dict[str,Any]:
     payload=json.loads(base64.urlsafe_b64decode(encoded+"="*(-len(encoded)%4)))
     if time.time()-float(payload["iat"])>max_age_seconds: raise ValueError("OAuth state expired")
     return payload
+
+
+def decrypt_secret(key: str, ciphertext: str) -> str:
+    return Fernet(key.encode()).decrypt(ciphertext.encode()).decode()
