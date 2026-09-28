@@ -43,7 +43,7 @@ async def db(method: str, path: str, json: dict[str, Any] | None = None) -> Any:
                 "apikey": key,
                 "Authorization": "Bearer " + key,
                 "Content-Type": "application/json",
-                "Prefer": "return=representation",
+                "Prefer": "return=representation,resolution=merge-duplicates",
             },
             json=json,
         )
