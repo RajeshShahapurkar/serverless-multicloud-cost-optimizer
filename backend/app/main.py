@@ -1,4 +1,5 @@
 import os
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -14,6 +15,7 @@ from .gcp_oauth import GCP_SCOPES, build_authorization_url, exchange_code, encry
 from .security import verify_state
 
 app = FastAPI(title="Multi-Cloud Cost Optimizer API", version="0.3.0")
+logger = logging.getLogger("multicloud.gcp")
 
 def env(name: str) -> str:
     value = os.getenv(name)
@@ -82,12 +84,29 @@ async def gcp_callback(code: str | None = None, state: str | None = None, error:
         return RedirectResponse(frontend + "/dashboard?cloud_error=gcp_authorization_denied")
     try:
         user_id = verify_state(env("OAUTH_STATE_SECRET"), state)["user_id"]
+    except Exception:
+        logger.exception("GCP OAuth state validation failed")
+        return RedirectResponse(frontend + "/dashboard?cloud_error=gcp_state_invalid")
+
+    try:
         tokens = await exchange_code(
             env("GOOGLE_CLIENT_ID"), env("GOOGLE_CLIENT_SECRET"), code, env("GOOGLE_REDIRECT_URI")
         )
-        accounts = await list_billing_accounts(tokens["access_token"])
+    except httpx.HTTPStatusError as exc:
+        logger.exception("GCP OAuth token exchange failed with HTTP %s", exc.response.status_code)
+        return RedirectResponse(frontend + f"/dashboard?cloud_error=gcp_token_exchange_{exc.response.status_code}")
     except Exception:
-        return RedirectResponse(frontend + "/dashboard?cloud_error=gcp_connection_failed")
+        logger.exception("GCP OAuth token exchange failed")
+        return RedirectResponse(frontend + "/dashboard?cloud_error=gcp_token_exchange_failed")
+
+    try:
+        accounts = await list_billing_accounts(tokens["access_token"])
+    except httpx.HTTPStatusError as exc:
+        logger.exception("GCP Cloud Billing API failed with HTTP %s", exc.response.status_code)
+        return RedirectResponse(frontend + f"/dashboard?cloud_error=gcp_billing_api_{exc.response.status_code}")
+    except Exception:
+        logger.exception("GCP Cloud Billing API request failed")
+        return RedirectResponse(frontend + "/dashboard?cloud_error=gcp_billing_api_failed")
 
     account = accounts[0] if accounts else {}
     data = {
