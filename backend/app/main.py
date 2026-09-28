@@ -157,3 +157,68 @@ async def gcp_callback(code: str | None = None, state: str | None = None, error:
         await db("POST", "provider_tokens", token_data)
 
     return RedirectResponse(frontend + "/dashboard?cloud_connected=gcp")
+
+@app.post("/api/providers/gcp/sync", response_model=SyncResponse)
+async def sync_gcp(authorization: str | None = Header(default=None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing application session")
+    user = await get_supabase_user(authorization.removeprefix("Bearer ").strip())
+    rows = await db("GET", f"cloud_accounts?user_id=eq.{user["id"]}&provider=eq.gcp&select=id,status")
+    if not rows:
+        raise HTTPException(status_code=404, detail="GCP account is not connected")
+    account_id = rows[0]["id"]
+    token_rows = await db("GET", f"provider_tokens?cloud_account_id=eq.{account_id}&user_id=eq.{user["id"]}&provider=eq.gcp&select=id,access_token_ciphertext,refresh_token_ciphertext")
+    if not token_rows:
+        raise HTTPException(status_code=404, detail="GCP credentials are not available")
+    token_row = token_rows[0]
+    access_token = decrypt_secret(env("TOKEN_ENCRYPTION_KEY"), token_row["access_token_ciphertext"])
+    refresh_cipher = token_row.get("refresh_token_ciphertext")
+    try:
+        projects = await list_projects(access_token)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 401 or not refresh_cipher:
+            raise HTTPException(status_code=502, detail=f"GCP project discovery failed with HTTP {exc.response.status_code}")
+        refresh_token = decrypt_secret(env("TOKEN_ENCRYPTION_KEY"), refresh_cipher)
+        try:
+            refreshed = await refresh_access_token(env("GOOGLE_CLIENT_ID"), env("GOOGLE_CLIENT_SECRET"), refresh_token)
+            access_token = refreshed["access_token"]
+            encrypted = encrypt_tokens(env("TOKEN_ENCRYPTION_KEY"), {"access_token": access_token, "refresh_token": refresh_token, "expires_in": refreshed.get("expires_in", 3600)})
+            await db("PATCH", f"provider_tokens?id=eq.{token_row["id"]}", {"access_token_ciphertext": encrypted["access_token_ciphertext"], "token_expires_at": datetime.fromtimestamp(encrypted["token_expires_at"], tz=timezone.utc).isoformat(), "scopes": GCP_SCOPES})
+            projects = await list_projects(access_token)
+        except Exception:
+            logger.exception("GCP token refresh failed during sync")
+            raise HTTPException(status_code=502, detail="GCP authentication refresh failed")
+    warnings = []
+    resource_count = 0
+    for project in projects:
+        project_id = project.get("projectId")
+        if not project_id:
+            continue
+        await db("POST", "cloud_resources?on_conflict=cloud_account_id,resource_id", {
+            "user_id": user["id"], "cloud_account_id": account_id, "provider": "gcp",
+            "resource_id": f"gcp:project:{project_id}", "resource_type": "project",
+            "resource_name": project.get("displayName") or project_id, "status": project.get("state"),
+            "metadata": {"project_id": project_id, "project_name": project.get("name"), "lifecycle_state": project.get("state")},
+        })
+        resource_count += 1
+        try:
+            instances = await list_compute_instances(access_token, project_id)
+            for instance in instances:
+                name = instance.get("name") or str(instance.get("id", ""))
+                if not name:
+                    continue
+                zone = instance.get("zone", "").split("/")[-1]
+                resource_id = f"gcp:compute:instance:{project_id}:{zone}:{name}"
+                await db("POST", "cloud_resources?on_conflict=cloud_account_id,resource_id", {
+                    "user_id": user["id"], "cloud_account_id": account_id, "provider": "gcp",
+                    "resource_id": resource_id, "resource_type": "compute_instance", "resource_name": name,
+                    "region": zone.rsplit("-", 1)[0] if "-" in zone else zone, "status": instance.get("status"),
+                    "metadata": {"project_id": project_id, "zone": zone, "machine_type": instance.get("machineType", "").split("/")[-1], "instance_id": str(instance.get("id", "")), "labels": instance.get("labels", {})},
+                })
+                resource_count += 1
+        except httpx.HTTPStatusError as exc:
+            warnings.append(f"{project_id}: Compute API returned HTTP {exc.response.status_code}")
+        except Exception:
+            warnings.append(f"{project_id}: Compute discovery failed")
+    await db("PATCH", f"cloud_accounts?id=eq.{account_id}", {"status": "connected", "last_synced_at": datetime.now(timezone.utc).isoformat(), "error_message": "; ".join(warnings) if warnings else None})
+    return SyncResponse(provider="gcp", projects=len(projects), resources=resource_count, warnings=warnings)
