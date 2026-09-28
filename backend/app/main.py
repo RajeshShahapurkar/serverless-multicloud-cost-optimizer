@@ -11,8 +11,8 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from .gcp_oauth import GCP_SCOPES, build_authorization_url, exchange_code, encrypt_tokens, list_billing_accounts
-from .security import verify_state
+from .gcp_oauth import GCP_SCOPES, build_authorization_url, exchange_code, encrypt_tokens, list_billing_accounts, refresh_access_token, list_projects, list_compute_instances
+from .security import verify_state, decrypt_secret
 
 app = FastAPI(title="Multi-Cloud Cost Optimizer API", version="0.3.0")
 logger = logging.getLogger("multicloud.gcp")
@@ -50,6 +50,12 @@ async def db(method: str, path: str, json: dict[str, Any] | None = None) -> Any:
     if r.status_code >= 400:
         raise HTTPException(status_code=502, detail="Database operation failed")
     return r.json() if r.content else {}
+
+class SyncResponse(BaseModel):
+    provider: str
+    projects: int
+    resources: int
+    warnings: list[str] = []
 
 class ConnectResponse(BaseModel):
     provider: str
