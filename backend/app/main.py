@@ -99,15 +99,19 @@ async def gcp_callback(code: str | None = None, state: str | None = None, error:
         logger.exception("GCP OAuth token exchange failed")
         return RedirectResponse(frontend + "/dashboard?cloud_error=gcp_token_exchange_failed")
 
+    billing_warning = None
     try:
         accounts = await list_billing_accounts(tokens["access_token"])
     except httpx.HTTPStatusError as exc:
         logger.exception("GCP Cloud Billing API failed with HTTP %s", exc.response.status_code)
-        return RedirectResponse(frontend + f"/dashboard?cloud_error=gcp_billing_api_{exc.response.status_code}")
+        if exc.response.status_code == 403:
+            accounts = []
+            billing_warning = "Connected, but this Google account cannot currently list Cloud Billing accounts. Resource discovery can continue; billing access can be configured separately."
+        else:
+            return RedirectResponse(frontend + f"/dashboard?cloud_error=gcp_billing_api_{exc.response.status_code}")
     except Exception:
         logger.exception("GCP Cloud Billing API request failed")
         return RedirectResponse(frontend + "/dashboard?cloud_error=gcp_billing_api_failed")
-
     account = accounts[0] if accounts else {}
     data = {
         "display_name": account.get("displayName") or "Google Cloud",
@@ -115,7 +119,7 @@ async def gcp_callback(code: str | None = None, state: str | None = None, error:
         "auth_method": "oauth",
         "account_identifier": account.get("name"),
         "last_synced_at": datetime.now(timezone.utc).isoformat(),
-        "error_message": None,
+        "error_message": billing_warning,
     }
 
     existing = await db("GET", f"cloud_accounts?user_id=eq.{user_id}&provider=eq.gcp&select=id")
