@@ -21,9 +21,32 @@ async def exchange_code(client_id,client_secret,code,redirect_uri):
 
 async def list_billing_accounts(access_token):
     async with httpx.AsyncClient(timeout=20) as client:
-        r=await client.get(GCP_BILLING_URL,headers={"Authorization":"Bearer "+access_token})
-        r.raise_for_status()
-        return r.json().get("billingAccounts",[])
+        response = await client.get(
+            GCP_BILLING_URL,
+            headers={"Authorization": "Bearer " + access_token},
+        )
+
+    if response.status_code == 403:
+        return {
+            "status": "unavailable",
+            "billing_accounts": [],
+            "message": "Google Cloud Billing access is not available for this account.",
+        }
+
+    if response.status_code == 401:
+        return {
+            "status": "unauthorized",
+            "billing_accounts": [],
+            "message": "The Google Cloud access token has expired or is invalid.",
+        }
+
+    response.raise_for_status()
+
+    return {
+        "status": "available",
+        "billing_accounts": response.json().get("billingAccounts", []),
+        "message": "Google Cloud Billing access is available.",
+    }
 
 def encrypt_tokens(key,token_response):
     return {"access_token_ciphertext":encrypt_secret(key,token_response["access_token"]),
