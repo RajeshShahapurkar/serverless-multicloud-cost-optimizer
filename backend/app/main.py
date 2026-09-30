@@ -62,6 +62,12 @@ class ConnectResponse(BaseModel):
     status: str
     authorization_url: str
 
+class BillingStatusResponse(BaseModel):
+    provider: str
+    status: str
+    billing_accounts: int
+    message: str
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -107,14 +113,15 @@ async def gcp_callback(code: str | None = None, state: str | None = None, error:
 
     billing_warning = None
     try:
-        accounts = await list_billing_accounts(tokens["access_token"])
-    except httpx.HTTPStatusError as exc:
-        logger.exception("GCP Cloud Billing API failed with HTTP %s", exc.response.status_code)
-        if exc.response.status_code == 403:
-            accounts = []
-            billing_warning = "Connected, but this Google account cannot currently list Cloud Billing accounts. Resource discovery can continue; billing access can be configured separately."
+        billing_result = await list_billing_accounts(tokens["access_token"])
+        if billing_result["status"] == "available":
+            accounts = billing_result["billing_accounts"]
         else:
-            return RedirectResponse(frontend + f"/dashboard?cloud_error=gcp_billing_api_{exc.response.status_code}")
+            accounts = []
+            billing_warning = billing_result.get(
+                "message",
+                "Google Cloud Billing access is currently unavailable.",
+            )
     except Exception:
         logger.exception("GCP Cloud Billing API request failed")
         return RedirectResponse(frontend + "/dashboard?cloud_error=gcp_billing_api_failed")
@@ -157,6 +164,85 @@ async def gcp_callback(code: str | None = None, state: str | None = None, error:
         await db("POST", "provider_tokens", token_data)
 
     return RedirectResponse(frontend + "/dashboard?cloud_connected=gcp")
+
+
+@app.get("/api/providers/gcp/billing-status", response_model=BillingStatusResponse)
+async def gcp_billing_status(authorization: str | None = Header(default=None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing application session")
+
+    user = await get_supabase_user(authorization.removeprefix("Bearer ").strip())
+    rows = await db(
+        "GET",
+        f"cloud_accounts?user_id=eq.{user['id']}&provider=eq.gcp&select=id,status",
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="GCP account is not connected")
+
+    account_id = rows[0]["id"]
+    token_rows = await db(
+        "GET",
+        f"provider_tokens?cloud_account_id=eq.{account_id}&user_id=eq.{user['id']}&provider=eq.gcp&select=id,access_token_ciphertext,refresh_token_ciphertext",
+    )
+    if not token_rows:
+        raise HTTPException(status_code=404, detail="GCP credentials are not available")
+
+    token_row = token_rows[0]
+    encryption_key = env("TOKEN_ENCRYPTION_KEY")
+    access_token = decrypt_secret(encryption_key, token_row["access_token_ciphertext"])
+    refresh_cipher = token_row.get("refresh_token_ciphertext")
+
+    result = await list_billing_accounts(access_token)
+
+    if result["status"] == "unauthorized" and refresh_cipher:
+        try:
+            refresh_token = decrypt_secret(encryption_key, refresh_cipher)
+            refreshed = await refresh_access_token(
+                env("GOOGLE_CLIENT_ID"),
+                env("GOOGLE_CLIENT_SECRET"),
+                refresh_token,
+            )
+            access_token = refreshed["access_token"]
+            encrypted = encrypt_tokens(
+                encryption_key,
+                {
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "expires_in": refreshed.get("expires_in", 3600),
+                },
+            )
+            await db(
+                "PATCH",
+                f"provider_tokens?id=eq.{token_row['id']}",
+                {
+                    "access_token_ciphertext": encrypted["access_token_ciphertext"],
+                    "token_expires_at": (
+                        datetime.fromtimestamp(
+                            encrypted["token_expires_at"],
+                            tz=timezone.utc,
+                        ).isoformat()
+                        if encrypted["token_expires_at"]
+                        else None
+                    ),
+                    "scopes": GCP_SCOPES,
+                },
+            )
+            result = await list_billing_accounts(access_token)
+        except Exception:
+            logger.exception("GCP token refresh failed during billing status check")
+            return BillingStatusResponse(
+                provider="gcp",
+                status="unauthorized",
+                billing_accounts=0,
+                message="Google Cloud authentication needs to be reconnected.",
+            )
+
+    return BillingStatusResponse(
+        provider="gcp",
+        status=result["status"],
+        billing_accounts=len(result.get("billing_accounts", [])),
+        message=result.get("message", "Google Cloud Billing status checked."),
+    )
 
 @app.post("/api/providers/gcp/sync", response_model=SyncResponse)
 async def sync_gcp(authorization: str | None = Header(default=None)):
