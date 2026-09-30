@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -67,6 +67,13 @@ class BillingStatusResponse(BaseModel):
     status: str
     billing_accounts: int
     message: str
+
+class CostSummaryResponse(BaseModel):
+    days: int
+    total_records: int
+    totals_by_currency: dict[str, float]
+    by_provider: list[dict[str, Any]]
+    by_service: list[dict[str, Any]]
 
 @app.get("/health")
 def health():
@@ -242,6 +249,79 @@ async def gcp_billing_status(authorization: str | None = Header(default=None)):
         status=result["status"],
         billing_accounts=len(result.get("billing_accounts", [])),
         message=result.get("message", "Google Cloud Billing status checked."),
+    )
+
+@app.get("/api/costs/summary", response_model=CostSummaryResponse)
+async def cost_summary(
+    authorization: str | None = Header(default=None),
+    days: int = 30,
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing application session")
+    if days < 1 or days > 365:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 365")
+
+    user = await get_supabase_user(authorization.removeprefix("Bearer ").strip())
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+
+    rows = await db(
+        "GET",
+        f"cost_records?user_id=eq.{user['id']}&period_end=gte.{cutoff}"
+        "&select=provider,amount,currency,service_name&period_start&period_end"
+        "&order=period_end.desc",
+    )
+
+    totals_by_currency: dict[str, float] = {}
+    provider_totals: dict[tuple[str, str], dict[str, Any]] = {}
+    service_totals: dict[tuple[str, str], dict[str, Any]] = {}
+
+    for row in rows:
+        provider = row.get("provider") or "unknown"
+        currency = row.get("currency") or "USD"
+        service = row.get("service_name") or "Unknown service"
+        try:
+            amount = float(row.get("amount") or 0)
+        except (TypeError, ValueError):
+            continue
+
+        totals_by_currency[currency] = totals_by_currency.get(currency, 0.0) + amount
+
+        provider_key = (provider, currency)
+        provider_item = provider_totals.setdefault(
+            provider_key,
+            {"provider": provider, "currency": currency, "amount": 0.0, "records": 0},
+        )
+        provider_item["amount"] += amount
+        provider_item["records"] += 1
+
+        service_key = (service, currency)
+        service_item = service_totals.setdefault(
+            service_key,
+            {"service_name": service, "currency": currency, "amount": 0.0, "records": 0},
+        )
+        service_item["amount"] += amount
+        service_item["records"] += 1
+
+    return CostSummaryResponse(
+        days=days,
+        total_records=len(rows),
+        totals_by_currency={k: round(v, 2) for k, v in totals_by_currency.items()},
+        by_provider=sorted(
+            [
+                {**item, "amount": round(item["amount"], 2)}
+                for item in provider_totals.values()
+            ],
+            key=lambda item: item["amount"],
+            reverse=True,
+        ),
+        by_service=sorted(
+            [
+                {**item, "amount": round(item["amount"], 2)}
+                for item in service_totals.values()
+            ],
+            key=lambda item: item["amount"],
+            reverse=True,
+        ),
     )
 
 @app.post("/api/providers/gcp/sync", response_model=SyncResponse)
