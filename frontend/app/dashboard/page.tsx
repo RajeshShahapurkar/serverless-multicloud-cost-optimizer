@@ -43,6 +43,30 @@ export default async function Dashboard() {
       gcpBilling = null;
     }
   }
+
+  let costSummary: {
+    days: number;
+    total_records: number;
+    totals_by_currency: Record<string, number>;
+    by_provider: Array<{ provider: string; currency: string; amount: number; records: number }>;
+    by_service: Array<{ service_name: string; currency: string; amount: number; records: number }>;
+  } | null = null;
+
+  try {
+    const response = await fetch(
+      (process.env.BACKEND_URL ?? "http://localhost:8000") +
+        "/api/costs/summary?days=30",
+      {
+        headers: { Authorization: "Bearer " + session.access_token },
+        cache: "no-store",
+      },
+    );
+    if (response.ok) {
+      costSummary = await response.json();
+    }
+  } catch {
+    costSummary = null;
+  }
   const { data: resources } = gcpAccount
     ? await supabase.from("cloud_resources")
         .select("resource_type,resource_name,region,status,metadata")
@@ -101,6 +125,35 @@ export default async function Dashboard() {
           );
         })}
       </div>
+
+      <section style={{
+        marginTop: 40,
+        border: "1px solid #ddd",
+        borderRadius: 12,
+        padding: 20,
+      }}>
+        <h2 style={{ marginTop: 0 }}>Cost Overview</h2>
+        {costSummary && costSummary.total_records > 0 ? (
+          <>
+            <p style={{ color: "#666" }}>
+              Normalized cost records from the last {costSummary.days} days.
+            </p>
+            <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+              {Object.entries(costSummary.totals_by_currency).map(([currency, amount]) => (
+                <div key={currency}>
+                  <strong>{currency}</strong>
+                  <div style={{ fontSize: 24 }}>{amount.toFixed(2)}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p style={{ color: "#666", marginBottom: 0 }}>
+            No actual cost records are available yet. The dashboard will show
+            provider costs here once billing data is accessible and collected.
+          </p>
+        )}
+      </section>
 
       {gcpAccount?.status === "connected" && (
         <>
