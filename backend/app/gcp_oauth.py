@@ -31,7 +31,7 @@ def encrypt_tokens(key,token_response):
             "token_expires_at": time.time() + int(token_response["expires_in"]) if token_response.get("expires_in") else None}
 
 
-GCP_PROJECTS_URL="https://cloudresourcemanager.googleapis.com/v3/projects"
+GCP_PROJECTS_URL = "https://cloudresourcemanager.googleapis.com/v1/projects"
 GCP_COMPUTE_AGGREGATED_URL="https://compute.googleapis.com/compute/v1/projects/{project_id}/aggregated/instances"
 
 async def refresh_access_token(client_id, client_secret, refresh_token):
@@ -48,22 +48,18 @@ async def refresh_access_token(client_id, client_secret, refresh_token):
         r.raise_for_status()
         return r.json()
 
-async def list_projects(access_token):
-    projects = []
-    page_token = None
-    headers = {"Authorization": "Bearer " + access_token}
+async def list_projects(access_token: str) -> list[dict]:
+    headers = {"Authorization": f"Bearer {access_token}"}
+
     async with httpx.AsyncClient(timeout=20) as client:
-        while True:
-            params = {"pageSize": 100}
-            if page_token:
-                params["pageToken"] = page_token
-            r = await client.get(GCP_PROJECTS_URL, headers=headers, params=params)
-            r.raise_for_status()
-            data = r.json()
-            projects.extend(data.get("projects", []))
-            page_token = data.get("nextPageToken")
-            if not page_token:
-                return projects
+        response = await client.get(
+            GCP_PROJECTS_URL,
+            headers=headers,
+            params={"pageSize": 100},
+        )
+        response.raise_for_status()
+
+    return response.json().get("projects", [])
 
 async def list_compute_instances(access_token, project_id):
     url = GCP_COMPUTE_AGGREGATED_URL.format(project_id=project_id)
