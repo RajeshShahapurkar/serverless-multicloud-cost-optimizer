@@ -10,7 +10,8 @@ const providers = [
 export default async function Dashboard() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!user || !session) redirect("/login");
 
   const { data: accounts } = await supabase.from("cloud_accounts")
     .select("provider,status,display_name,account_identifier,last_synced_at,error_message")
@@ -18,6 +19,30 @@ export default async function Dashboard() {
   const accountMap = new Map((accounts ?? []).map((a) => [a.provider, a]));
 
   const gcpAccount = accountMap.get("gcp");
+
+  let gcpBilling: {
+    status: string;
+    billing_accounts: number;
+    message: string;
+  } | null = null;
+
+  if (gcpAccount) {
+    try {
+      const response = await fetch(
+        (process.env.BACKEND_URL ?? "http://localhost:8000") +
+          "/api/providers/gcp/billing-status",
+        {
+          headers: { Authorization: "Bearer " + session.access_token },
+          cache: "no-store",
+        },
+      );
+      if (response.ok) {
+        gcpBilling = await response.json();
+      }
+    } catch {
+      gcpBilling = null;
+    }
+  }
   const { data: resources } = gcpAccount
     ? await supabase.from("cloud_resources")
         .select("resource_type,resource_name,region,status,metadata")
@@ -78,7 +103,36 @@ export default async function Dashboard() {
       </div>
 
       {gcpAccount?.status === "connected" && (
-        <section style={{ marginTop: 40 }}>
+        <>
+          <section style={{
+            marginTop: 40,
+            border: "1px solid #ddd",
+            borderRadius: 12,
+            padding: 20,
+          }}>
+            <h2 style={{ marginTop: 0 }}>Google Cloud Billing</h2>
+            {gcpBilling ? (
+              <>
+                <p style={{ marginBottom: 6 }}>
+                  Status: <strong>{gcpBilling.status}</strong>
+                </p>
+                <p style={{ color: "#666", marginTop: 0 }}>
+                  {gcpBilling.message}
+                </p>
+                {gcpBilling.status === "available" && (
+                  <p style={{ marginBottom: 0 }}>
+                    Billing accounts visible: {gcpBilling.billing_accounts}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p style={{ color: "#666" }}>
+                Billing status could not be checked right now.
+              </p>
+            )}
+          </section>
+
+          <section style={{ marginTop: 40 }}>
           <h2>Google Cloud Resource Inventory</h2>
           <p style={{ color: "#666" }}>
             {resources?.length ?? 0} resources stored from the latest synchronization.
@@ -109,7 +163,8 @@ export default async function Dashboard() {
           ) : (
             <p>No resources have been synchronized yet. Click <strong>Sync resources</strong>.</p>
           )}
-        </section>
+          </section>
+        </>
       )}
     </main>
   );
