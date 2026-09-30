@@ -267,7 +267,7 @@ async def cost_summary(
     rows = await db(
         "GET",
         f"cost_records?user_id=eq.{user['id']}&period_end=gte.{cutoff}"
-        "&select=provider,amount,currency,service_name&period_start&period_end"
+        "&select=provider,amount,currency,service_name,period_start,period_end"
         "&order=period_end.desc",
     )
 
