@@ -11,8 +11,9 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
+from .providers.aws import AWSProvider
 from .gcp_oauth import GCP_SCOPES, build_authorization_url, exchange_code, encrypt_tokens, list_billing_accounts, refresh_access_token, list_projects, list_compute_instances
-from .security import verify_state, decrypt_secret
+from .security import verify_state, decrypt_secret, encrypt_secret
 
 app = FastAPI(title="Multi-Cloud Cost Optimizer API", version="0.3.0")
 logger = logging.getLogger("multicloud.gcp")
@@ -250,6 +251,226 @@ async def gcp_billing_status(authorization: str | None = Header(default=None)):
         billing_accounts=len(result.get("billing_accounts", [])),
         message=result.get("message", "Google Cloud Billing status checked."),
     )
+
+class AWSConnectStartResponse(BaseModel):
+    provider: str
+    status: str
+    external_id: str
+    trusted_principal_arn: str
+    instructions: str
+
+
+class AWSConnectCompleteRequest(BaseModel):
+    role_arn: str
+    region: str = "us-east-1"
+
+
+@app.post("/api/providers/aws/connect/start", response_model=AWSConnectStartResponse)
+async def start_aws_connection(authorization: str | None = Header(default=None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing application session")
+
+    user = await get_supabase_user(authorization.removeprefix("Bearer ").strip())
+    external_id = __import__("secrets").token_urlsafe(32)
+
+    sts = __import__("boto3").client("sts", region_name="us-east-1")
+    try:
+        identity = sts.get_caller_identity()
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="AWS backend credentials are not configured. Configure the AWS SDK credential chain for the backend first.",
+        )
+
+    principal = os.getenv("AWS_APP_PRINCIPAL_ARN") or identity.get("Arn", "")
+    if ":assumed-role/" in principal:
+        parts = principal.split(":assumed-role/", 1)
+        role_name = parts[1].split("/", 1)[0]
+        principal = f"{parts[0]}:role/{role_name}"
+
+    rows = await db(
+        "GET",
+        f"cloud_accounts?user_id=eq.{user['id']}&provider=eq.aws&select=id",
+    )
+    data = {
+        "display_name": "Amazon Web Services",
+        "status": "pending",
+        "auth_method": "iam_role",
+        "account_identifier": None,
+        "region": "us-east-1",
+        "error_message": "Create the AWS IAM role using the supplied trust principal and external ID, then complete the connection.",
+    }
+    if rows:
+        account_id = rows[0]["id"]
+        await db("PATCH", f"cloud_accounts?id=eq.{account_id}", data)
+    else:
+        created = await db("POST", "cloud_accounts", {"user_id": user["id"], "provider": "aws", **data})
+        account_id = created[0]["id"]
+
+    await db(
+        "POST",
+        "provider_tokens",
+        {
+            "cloud_account_id": account_id,
+            "user_id": user["id"],
+            "provider": "aws",
+            "access_token_ciphertext": None,
+            "refresh_token_ciphertext": None,
+            "role_arn_ciphertext": None,
+            "external_id_ciphertext": encrypt_secret(env("TOKEN_ENCRYPTION_KEY"), external_id),
+            "scopes": ["sts:AssumeRole", "ce:GetCostAndUsage"],
+        },
+    )
+
+    return AWSConnectStartResponse(
+        provider="aws",
+        status="setup_required",
+        external_id=external_id,
+        trusted_principal_arn=principal,
+        instructions="Create an IAM role in the AWS account you want to connect. Trust the supplied principal, require the supplied external ID, and grant read-only permissions for the resources and Cost Explorer data you want to collect.",
+    )
+
+
+@app.post("/api/providers/aws/connect/complete")
+async def complete_aws_connection(
+    payload: AWSConnectCompleteRequest,
+    authorization: str | None = Header(default=None),
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing application session")
+
+    user = await get_supabase_user(authorization.removeprefix("Bearer ").strip())
+    rows = await db(
+        "GET",
+        f"cloud_accounts?user_id=eq.{user['id']}&provider=eq.aws&select=id",
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="AWS connection setup has not been started")
+
+    account_id = rows[0]["id"]
+    token_rows = await db(
+        "GET",
+        f"provider_tokens?cloud_account_id=eq.{account_id}&user_id=eq.{user['id']}&provider=eq.aws&select=id,external_id_ciphertext",
+    )
+    if not token_rows or not token_rows[0].get("external_id_ciphertext"):
+        raise HTTPException(status_code=404, detail="AWS connection setup token is missing")
+
+    external_id = decrypt_secret(env("TOKEN_ENCRYPTION_KEY"), token_rows[0]["external_id_ciphertext"])
+    provider = AWSProvider()
+    try:
+        temporary = provider.assume_role(
+            payload.role_arn,
+            external_id,
+            f"smco-{user['id'][:8]}",
+        )
+        session = __import__("boto3").Session(
+            aws_access_key_id=temporary["access_key_id"],
+            aws_secret_access_key=temporary["secret_access_key"],
+            aws_session_token=temporary["session_token"],
+            region_name=payload.region,
+        )
+        identity = session.client("sts").get_caller_identity()
+    except Exception as exc:
+        logger.exception("AWS role assumption failed")
+        raise HTTPException(status_code=400, detail=f"AWS role assumption failed: {exc}")
+
+    await db(
+        "PATCH",
+        f"provider_tokens?id=eq.{token_rows[0]['id']}",
+        {
+            "role_arn_ciphertext": encrypt_secret(env("TOKEN_ENCRYPTION_KEY"), payload.role_arn),
+            "scopes": ["sts:AssumeRole", "ce:GetCostAndUsage"],
+        },
+    )
+    await db(
+        "PATCH",
+        f"cloud_accounts?id=eq.{account_id}",
+        {
+            "status": "connected",
+            "auth_method": "iam_role",
+            "account_identifier": identity.get("Account"),
+            "region": payload.region,
+            "error_message": None,
+            "last_synced_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+    return {
+        "provider": "aws",
+        "status": "connected",
+        "account_identifier": identity.get("Account"),
+        "role_arn": payload.role_arn,
+    }
+
+
+@app.post("/api/providers/aws/sync")
+async def sync_aws(
+    authorization: str | None = Header(default=None),
+    days: int = 30,
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing application session")
+    if days < 1 or days > 365:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 365")
+
+    user = await get_supabase_user(authorization.removeprefix("Bearer ").strip())
+    rows = await db("GET", f"cloud_accounts?user_id=eq.{user['id']}&provider=eq.aws&select=id,region")
+    if not rows:
+        raise HTTPException(status_code=404, detail="AWS account is not connected")
+    account_id = rows[0]["id"]
+    token_rows = await db("GET", f"provider_tokens?cloud_account_id=eq.{account_id}&user_id=eq.{user['id']}&provider=eq.aws&select=id,role_arn_ciphertext,external_id_ciphertext")
+    if not token_rows or not token_rows[0].get("role_arn_ciphertext"):
+        raise HTTPException(status_code=404, detail="AWS role credentials are not configured")
+
+    token = token_rows[0]
+    encryption_key = env("TOKEN_ENCRYPTION_KEY")
+    role_arn = decrypt_secret(encryption_key, token["role_arn_ciphertext"])
+    external_id = decrypt_secret(encryption_key, token["external_id_ciphertext"])
+    provider = AWSProvider()
+
+    try:
+        temporary = provider.assume_role(role_arn, external_id, f"smco-sync-{user['id'][:8]}")
+        temporary["region"] = rows[0].get("region") or "us-east-1"
+        temporary["days"] = days
+        costs = provider.collect_costs(temporary)
+        resources = provider.collect_resources(temporary)
+    except Exception as exc:
+        logger.exception("AWS synchronization failed")
+        await db("PATCH", f"cloud_accounts?id=eq.{account_id}", {"status": "error", "error_message": str(exc)})
+        raise HTTPException(status_code=502, detail=f"AWS synchronization failed: {exc}")
+
+    for resource in resources:
+        resource_id = resource.get("resource_id")
+        if not resource_id:
+            continue
+        await db("POST", "cloud_resources?on_conflict=cloud_account_id,resource_id", {
+            "user_id": user["id"],
+            "cloud_account_id": account_id,
+            "provider": "aws",
+            **resource,
+        })
+
+    for cost in costs:
+        await db("POST", "cost_records", {
+            "user_id": user["id"],
+            "cloud_account_id": account_id,
+            **cost,
+        })
+
+    await db("PATCH", f"cloud_accounts?id=eq.{account_id}", {
+        "status": "connected",
+        "last_synced_at": datetime.now(timezone.utc).isoformat(),
+        "error_message": None,
+    })
+
+    return {
+        "provider": "aws",
+        "status": "synced",
+        "resources": len(resources),
+        "cost_records": len(costs),
+        "days": days,
+    }
+
 
 @app.get("/api/costs/summary", response_model=CostSummaryResponse)
 async def cost_summary(
