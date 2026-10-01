@@ -15,12 +15,12 @@ class CloudProvider(ABC):
         ...
 
     @abstractmethod
-    def collect_resources(self, access_token: str) -> list[dict[str, Any]]:
+    def collect_resources(self, credentials: dict[str, Any]) -> list[dict[str, Any]]:
         """Return normalized resource records."""
         ...
 
     @abstractmethod
-    def collect_costs(self, access_token: str) -> list[dict[str, Any]]:
+    def collect_costs(self, credentials: dict[str, Any]) -> list[dict[str, Any]]:
         """Return normalized cost records.
 
         Each record should contain provider, amount, currency, service_name,
