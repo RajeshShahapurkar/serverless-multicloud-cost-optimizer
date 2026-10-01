@@ -118,6 +118,25 @@ export default async function Dashboard() {
                     </a>
                   )}
                 </div>
+              ) : provider.id === "aws" ? (
+                <div style={{ display: "flex", gap: 8 }}>
+                  <a href="/dashboard/aws-connect" style={{
+                    display: "inline-block", padding: "10px 18px", borderRadius: 8,
+                    background: "#111", color: "#fff", textDecoration: "none"
+                  }}>
+                    {connected ? "Manage connection" : "Connect"}
+                  </a>
+                  {connected && (
+                    <form action="/api/providers/aws/sync" method="post">
+                      <button type="submit" style={{
+                        padding: "10px 18px", borderRadius: 8,
+                        border: "1px solid #111", background: "#fff", color: "#111"
+                      }}>
+                        Sync AWS
+                      </button>
+                    </form>
+                  )}
+                </div>
               ) : (
                 <span style={{ color: "#777" }}>Coming soon</span>
               )}
