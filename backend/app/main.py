@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from .providers.aws import AWSProvider
 from .gcp_oauth import GCP_SCOPES, build_authorization_url, exchange_code, encrypt_tokens, list_billing_accounts, refresh_access_token, list_projects, list_compute_instances
+from .gcp_inventory import search_all_resources, normalize_asset, list_compute_cpu_utilization
 from .security import verify_state, decrypt_secret, encrypt_secret
 
 app = FastAPI(title="Multi-Cloud Cost Optimizer API", version="0.3.0")
@@ -545,6 +546,96 @@ async def cost_summary(
         ),
     )
 
+
+
+@app.get("/api/providers/gcp/recommendations")
+async def gcp_recommendations(authorization: str | None = Header(default=None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing application session")
+
+    user = await get_supabase_user(authorization.removeprefix("Bearer ").strip())
+    accounts = await db(
+        "GET",
+        f"cloud_accounts?user_id=eq.{user['id']}&provider=eq.gcp&select=id",
+    )
+    if not accounts:
+        raise HTTPException(status_code=404, detail="GCP account is not connected")
+
+    account_id = accounts[0]["id"]
+    resources = await db(
+        "GET",
+        f"cloud_resources?user_id=eq.{user['id']}&cloud_account_id=eq.{account_id}&provider=eq.gcp&select=id,resource_id,resource_type,resource_name,region,status,metadata&order=resource_type,resource_name",
+    )
+
+    metrics = await db(
+        "GET",
+        f"usage_metrics?user_id=eq.{user['id']}&select=cloud_resource_id,metric_name,metric_value,unit,recorded_at&order=recorded_at.desc",
+    )
+
+    latest_cpu: dict[str, float] = {}
+    for metric in metrics:
+        if metric.get("metric_name") != "cpu_utilization":
+            continue
+        resource_id = metric.get("cloud_resource_id")
+        if resource_id and resource_id not in latest_cpu:
+            latest_cpu[resource_id] = float(metric.get("metric_value") or 0)
+
+    recommendations = []
+    for resource in resources:
+        resource_type = resource.get("resource_type", "")
+        status = (resource.get("status") or "").upper()
+        cpu = latest_cpu.get(resource["id"])
+
+        if resource_type == "compute_instance" and status == "TERMINATED":
+            recommendations.append({
+                "resource_id": resource["resource_id"],
+                "resource_name": resource.get("resource_name"),
+                "resource_type": resource_type,
+                "severity": "medium",
+                "rule": "STOPPED_COMPUTE_INSTANCE",
+                "title": "Stopped VM should be reviewed",
+                "reason": "The VM is stopped and may still have attached disks or other billable resources.",
+                "metric_value": None,
+                "unit": None,
+            })
+        elif resource_type == "compute_instance" and cpu is not None and cpu < 0.05:
+            recommendations.append({
+                "resource_id": resource["resource_id"],
+                "resource_name": resource.get("resource_name"),
+                "resource_type": resource_type,
+                "severity": "high",
+                "rule": "POTENTIAL_IDLE_VM",
+                "title": "Potential idle VM",
+                "reason": "Average CPU utilization observed over the latest monitoring window is below 5%. Review before keeping the VM running.",
+                "metric_value": round(cpu, 4),
+                "unit": "ratio",
+            })
+        elif resource_type == "compute_instance" and cpu is not None and cpu < 0.20:
+            recommendations.append({
+                "resource_id": resource["resource_id"],
+                "resource_name": resource.get("resource_name"),
+                "resource_type": resource_type,
+                "severity": "low",
+                "rule": "UNDERUTILIZED_VM",
+                "title": "Potentially underutilized VM",
+                "reason": "Average CPU utilization is below 20%. Consider reviewing the machine size and workload requirements.",
+                "metric_value": round(cpu, 4),
+                "unit": "ratio",
+            })
+
+    return {
+        "provider": "gcp",
+        "resource_count": len(resources),
+        "recommendation_count": len(recommendations),
+        "recommendations": recommendations,
+        "rules": [
+            "Stopped Compute Engine VMs are flagged for review.",
+            "Compute Engine VMs with average CPU below 5% are flagged as potentially idle.",
+            "Compute Engine VMs with average CPU below 20% are flagged as potentially underutilized.",
+        ],
+    }
+
+
 @app.post("/api/providers/gcp/sync", response_model=SyncResponse)
 async def sync_gcp(authorization: str | None = Header(default=None)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -577,6 +668,9 @@ async def sync_gcp(authorization: str | None = Header(default=None)):
             raise HTTPException(status_code=502, detail="GCP authentication refresh failed")
     warnings = []
     resource_count = 0
+    inventory_resource_count = 0
+    monitoring_metric_count = 0
+
     for project in projects:
         project_id = project.get("projectId")
         if not project_id:
@@ -607,5 +701,61 @@ async def sync_gcp(authorization: str | None = Header(default=None)):
             warnings.append(f"{project_id}: Compute API returned HTTP {exc.response.status_code}")
         except Exception:
             warnings.append(f"{project_id}: Compute discovery failed")
+
+        try:
+            assets = await search_all_resources(access_token, project_id)
+            for asset in assets:
+                normalized = normalize_asset(asset, project_id)
+                if not normalized:
+                    continue
+                await db("POST", "cloud_resources?on_conflict=cloud_account_id,resource_id", {
+                    "user_id": user["id"],
+                    "cloud_account_id": account_id,
+                    "provider": "gcp",
+                    **normalized,
+                })
+                inventory_resource_count += 1
+        except httpx.HTTPStatusError as exc:
+            warnings.append(f"{project_id}: Cloud Asset Inventory returned HTTP {exc.response.status_code}")
+        except Exception:
+            warnings.append(f"{project_id}: Cloud Asset Inventory discovery failed")
+
+        try:
+            metric_series = await list_compute_cpu_utilization(access_token, project_id, days=7)
+            resource_rows = await db(
+                "GET",
+                f"cloud_resources?cloud_account_id=eq.{account_id}&provider=eq.gcp&resource_type=eq.compute_instance&select=id,resource_name,metadata",
+            )
+            by_instance_id = {}
+            by_name = {}
+            for row in resource_rows:
+                metadata = row.get("metadata") or {}
+                if metadata.get("instance_id"):
+                    by_instance_id[str(metadata["instance_id"])] = row
+                if row.get("resource_name"):
+                    by_name[row["resource_name"]] = row
+
+            for metric in metric_series.values():
+                resource = by_instance_id.get(str(metric.get("instance_id"))) or by_name.get(metric.get("instance_name"))
+                if not resource:
+                    continue
+                await db("POST", "usage_metrics", {
+                    "user_id": user["id"],
+                    "cloud_resource_id": resource["id"],
+                    "metric_name": metric["metric_name"],
+                    "metric_value": metric["metric_value"],
+                    "unit": metric["unit"],
+                    "recorded_at": metric["recorded_at"],
+                })
+                monitoring_metric_count += 1
+        except httpx.HTTPStatusError as exc:
+            warnings.append(f"{project_id}: Cloud Monitoring returned HTTP {exc.response.status_code}")
+        except Exception:
+            warnings.append(f"{project_id}: Cloud Monitoring collection failed")
     await db("PATCH", f"cloud_accounts?id=eq.{account_id}", {"status": "connected", "last_synced_at": datetime.now(timezone.utc).isoformat(), "error_message": "; ".join(warnings) if warnings else None})
-    return SyncResponse(provider="gcp", projects=len(projects), resources=resource_count, warnings=warnings)
+    return SyncResponse(
+        provider="gcp",
+        projects=len(projects),
+        resources=resource_count + inventory_resource_count,
+        warnings=warnings,
+    )
