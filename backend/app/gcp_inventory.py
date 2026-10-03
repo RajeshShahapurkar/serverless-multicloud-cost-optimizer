@@ -127,7 +127,17 @@ async def list_compute_cpu_utilization(
             headers=headers,
             params=params,
         )
-        response.raise_for_status()
+
+        # Diagnostic logging for Google Monitoring API errors.
+        # The OAuth access token is NOT printed.
+        if response.status_code >= 400:
+            print(
+                "\n[GCP Monitoring ERROR]"
+                f"\nProject: {project_id}"
+                f"\nHTTP status: {response.status_code}"
+                f"\nResponse: {response.text}\n"
+            )
+            response.raise_for_status()
 
         for series in response.json().get("timeSeries", []):
             resource_labels = (series.get("resource") or {}).get("labels") or {}
