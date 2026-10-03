@@ -6,7 +6,7 @@ from .security import encrypt_secret,sign_state
 GCP_AUTH_URL="https://accounts.google.com/o/oauth2/v2/auth"
 GCP_TOKEN_URL="https://oauth2.googleapis.com/token"
 GCP_BILLING_URL="https://cloudbilling.googleapis.com/v1/billingAccounts"
-GCP_SCOPES=["https://www.googleapis.com/auth/cloud-billing.readonly","https://www.googleapis.com/auth/cloud-platform.read-only"]
+GCP_SCOPES=["https://www.googleapis.com/auth/cloud-billing.readonly","https://www.googleapis.com/auth/cloud-platform"]
 
 def build_authorization_url(client_id,state_secret,user_id,redirect_uri):
     state=sign_state(state_secret,{"user_id":user_id,"iat":time.time(),"nonce":secrets.token_urlsafe(24)})
