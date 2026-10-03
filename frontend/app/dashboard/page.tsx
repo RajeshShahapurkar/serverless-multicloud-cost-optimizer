@@ -44,6 +44,40 @@ export default async function Dashboard() {
     }
   }
 
+  let gcpRecommendations: {
+    resource_count: number;
+    recommendation_count: number;
+    recommendations: Array<{
+      resource_id: string;
+      resource_name: string | null;
+      resource_type: string;
+      severity: string;
+      rule: string;
+      title: string;
+      reason: string;
+      metric_value: number | null;
+      unit: string | null;
+    }>;
+  } | null = null;
+
+  if (gcpAccount) {
+    try {
+      const response = await fetch(
+        (process.env.BACKEND_URL ?? "http://localhost:8000") +
+          "/api/providers/gcp/recommendations",
+        {
+          headers: { Authorization: "Bearer " + session.access_token },
+          cache: "no-store",
+        },
+      );
+      if (response.ok) {
+        gcpRecommendations = await response.json();
+      }
+    } catch {
+      gcpRecommendations = null;
+    }
+  }
+
   let costSummary: {
     days: number;
     total_records: number;
@@ -235,6 +269,58 @@ export default async function Dashboard() {
           ) : (
             <p>No resources have been synchronized yet. Click <strong>Sync resources</strong>.</p>
           )}
+          </section>
+          <section style={{
+            marginTop: 40,
+            border: "1px solid #ddd",
+            borderRadius: 12,
+            padding: 20,
+          }}>
+            <h2 style={{ marginTop: 0 }}>Optimization Opportunities</h2>
+            {gcpRecommendations ? (
+              <>
+                <p style={{ color: "#666" }}>
+                  {gcpRecommendations.resource_count} GCP resources analyzed ·{" "}
+                  {gcpRecommendations.recommendation_count} recommendations
+                </p>
+                {gcpRecommendations.recommendations.length > 0 ? (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    {gcpRecommendations.recommendations.map((item) => (
+                      <div
+                        key={item.resource_id + ":" + item.rule}
+                        style={{
+                          border: "1px solid #ddd",
+                          borderRadius: 10,
+                          padding: 14,
+                        }}
+                      >
+                        <strong>{item.title}</strong>
+                        <div style={{ marginTop: 4 }}>
+                          {item.resource_name || item.resource_id}
+                        </div>
+                        <p style={{ color: "#666", marginBottom: 0 }}>
+                          {item.reason}
+                        </p>
+                        {item.metric_value !== null && (
+                          <small>
+                            Observed CPU: {(item.metric_value * 100).toFixed(1)}%
+                          </small>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ color: "#666" }}>
+                    No rule-based optimization opportunities were detected from
+                    the currently available GCP inventory and monitoring data.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p style={{ color: "#666" }}>
+                Optimization analysis is unavailable until GCP resources are synchronized.
+              </p>
+            )}
           </section>
         </>
       )}
