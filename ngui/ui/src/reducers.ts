@@ -3,7 +3,6 @@ import { combineReducers } from "redux";
 import { persistReducer, createMigrate } from "redux-persist";
 import { GET_TOKEN } from "api/auth/actionTypes";
 import AuthReducer, { AUTH } from "api/auth/reducer";
-import JiraBusReducer, { JIRA_BUS } from "api/jira_bus/reducer";
 import ApiReducer, { API } from "api/reducer";
 import RestapiReducer, { RESTAPI } from "api/restapi/reducer";
 import ResourcesSortGroupsByReducer, {
@@ -48,7 +47,7 @@ const persistConfig = {
   key: ROOT,
   storage: localForage,
   keyPrefix: "",
-  blacklist: [AUTH, API, RESTAPI, JIRA_BUS, CLOUD_COST_COMPARISON_SELECTED_SIZES],
+  blacklist: [AUTH, API, RESTAPI, CLOUD_COST_COMPARISON_SELECTED_SIZES],
   version: CURRENT_VERSION,
   migrate: createMigrate(migrations, { debug: true }),
 };
@@ -66,7 +65,6 @@ const appReducer = combineReducers({
   [API]: ApiReducer,
   [AUTH]: persistReducer(authPersistConfig, AuthReducer),
   [RESTAPI]: RestapiReducer,
-  [JIRA_BUS]: JiraBusReducer,
   [RESOURCES_SORT_GROUPS_BY]: ResourcesSortGroupsByReducer,
   [SCOPE_ID]: ScopeIdReducer,
   [RANGE_DATES]: RangeDatesReducer,
@@ -98,7 +96,6 @@ const rootReducer = (incomingState, action) => {
       [INITIAL]: initial,
       [API]: api,
       [RESTAPI]: restapi,
-      [JIRA_BUS]: jiraBus,
       [RANGE_DATES]: rangeDates,
       [EXPANDED_POOL_ROWS]: expandedPoolRows,
       [RECOMMENDATIONS_CONTROLS_STATE]: recommendationsControlsState,
