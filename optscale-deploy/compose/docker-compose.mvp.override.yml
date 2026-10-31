@@ -1,0 +1,70 @@
+# MVP overlay for the OptScale-based multi-cloud cost optimizer.
+#
+# Usage from this directory:
+#   docker compose -f docker-compose.unified.yml -f docker-compose.mvp.override.yml config
+#   docker compose -f docker-compose.unified.yml -f docker-compose.mvp.override.yml up -d
+#
+# Services assigned to the "extended" profile are excluded from the default
+# MVP startup. They remain available for explicit opt-in with:
+#   docker compose -f docker-compose.unified.yml -f docker-compose.mvp.override.yml --profile extended up -d
+#
+# This overlay intentionally does not remove API routes, source modules,
+# database volumes, or the original upstream Compose files. It only excludes
+# independent background feature workers/schedulers that are outside the
+# first MVP scope. The core billing import workers and resource discovery
+# needed for inventory/recommendations remain enabled.
+
+services:
+  gemini-worker:
+    profiles: ["extended"]
+
+  gemini-data-worker:
+    profiles: ["extended"]
+
+  gemini-scheduler:
+    profiles: ["extended"]
+
+  bi-exporter:
+    profiles: ["extended"]
+
+  bi-scheduler:
+    profiles: ["extended"]
+
+  booking-observer-worker:
+    profiles: ["extended"]
+
+  booking-observer-scheduler:
+    profiles: ["extended"]
+
+  calendar-observer-worker:
+    profiles: ["extended"]
+
+  calendar-observer-scheduler:
+    profiles: ["extended"]
+
+  organization-violations-worker:
+    profiles: ["extended"]
+
+  organization-violations-scheduler:
+    profiles: ["extended"]
+
+  power-schedule-worker:
+    profiles: ["extended"]
+
+  power-schedule-scheduler:
+    profiles: ["extended"]
+
+  live-demo-generator-worker:
+    profiles: ["extended"]
+
+  live-demo-generator-scheduler:
+    profiles: ["extended"]
+
+  demo-org-cleanup:
+    profiles: ["extended"]
+
+  failed-imports-dataset-generator:
+    profiles: ["extended"]
+
+  users-dataset-generator:
+    profiles: ["extended"]
