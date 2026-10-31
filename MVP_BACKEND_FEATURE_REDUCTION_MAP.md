@@ -124,3 +124,23 @@ A follow-up inspection found that the Resources menu marks cluster-type paths as
 - Some shared UI/API modules still import Jira Bus actions and many feature action creators. They have not been removed because their references must be traced before changing the application bootstrap.
 - Some feature routes may be opened by internal links from retained pages. The local smoke test must exercise dashboard, data-source create/detail, expenses (including pool/cloud breakdown), resource details/perspectives, recommendations, settings, login and first-run setup.
 - A route hidden from the registry will fall through to the not-found route; this is intentional for excluded MVP pages but should be checked against any retained page links.
+
+## 10. Third UI/API reduction — Jira Bus state wiring removed
+
+The retained MVP UI no longer registers Jira connection routes or shows Jira navigation. The central store and API surface previously still initialized Jira Bus state even after those pages were removed.
+
+The following changes are now committed:
+- `ngui/ui/src/reducers.ts`: removed the Jira Bus reducer and its persisted-state handling from the root store.
+- `ngui/ui/src/api/index.ts`: removed the Jira Bus action imports/exports and the Jira Bus reducer constant export.
+- The dedicated Jira Bus source modules remain in the repository; this is not a destructive source deletion.
+
+A repository code search for `JIRA_BUS`, `getJiraOrganizationStatus`, `updateUserAssignment`, `jira_bus`, and `slacker` returned no additional indexed matches after the central exports were removed. This is useful evidence, but it is not a substitute for a full local TypeScript build and runtime test.
+
+## 11. Route registry regression test
+
+The existing `ngui/ui/src/utils/routes/index.test.ts` checks that:
+- Login, registration, password recovery, email verification and cloud-account onboarding remain registered.
+- Dashboard, expenses (including cloud/pool/owner breakdowns), cross-cloud comparison, resources and recommendations remain registered.
+- ML, BI, Jira/Slack, Kubernetes rightsizing, power scheduling, environment and anomaly routes are not registered.
+
+This test is present in the branch. It still needs to be executed in the user's/local CI environment; source inspection alone does not establish that it passes.
