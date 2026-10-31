@@ -2,6 +2,8 @@ import acceptInvitationRoute from "./acceptInvitationRoute";
 import BaseRoute from "./baseRoute";
 import cloudCostComparisonRoute from "./cloudCostComparisonRoute";
 import cloudExpensesRoute from "./cloudExpensesRoute";
+import clusterTypesRoute from "./clusterTypesRoute";
+import createClusterTypeRoute from "./createClusterTypeRoute";
 import createDataSourceRoute from "./createDataSourceRoute";
 import dataSourceOverviewRoute from "./dataSourceOverviewRoute";
 import dataSourcesRoute from "./dataSourcesRoute";
@@ -15,6 +17,7 @@ import notFoundRoute from "./notFoundRoute";
 import organizationOptionsRoute from "./organizationOptionsRoute";
 import organizationsOverviewRoute from "./organizationsOverviewRoute";
 import ownerExpensesRoute from "./ownerExpensesRoute";
+import poolExpensesRoute from "./poolExpensesRoute";
 import passwordRecoveryRoute from "./passwordRecoveryRoute";
 import recommendationsRoute from "./recommendationsRoute";
 import registerRoute from "./registerRoute";
@@ -42,12 +45,15 @@ export const routes = [
   createDataSourceRoute,
   expensesRoute,
   cloudExpensesRoute,
+  poolExpensesRoute,
   ownerExpensesRoute,
   cloudCostComparisonRoute,
 
   // Resource inventory and optimization.
   resourcesRoute,
   resourceRoute,
+  clusterTypesRoute,
+  createClusterTypeRoute,
   resourcesPerspectives,
   recommendationsRoute,
 
