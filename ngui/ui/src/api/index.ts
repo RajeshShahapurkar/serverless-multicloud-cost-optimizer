@@ -11,8 +11,6 @@ import {
   API_URL as AUTH_API_URL,
 } from "./auth";
 import { AUTH } from "./auth/reducer";
-import { updateUserAssignment, getJiraOrganizationStatus } from "./jira_bus";
-import { JIRA_BUS } from "./jira_bus/reducer";
 import {
   getOrganizationOptions,
   getOrganizationOption,
@@ -328,8 +326,6 @@ export {
   signIn,
   deleteEmployee,
   updatePoolPolicyActivity,
-  updateUserAssignment,
-  getJiraOrganizationStatus,
   createDailyExpenseLimitResourceConstraint,
   updateDailyExpenseLimitResourceConstraint,
   getResourceCountBreakdown,
@@ -436,6 +432,6 @@ export {
   verifyEmail,
 };
 
-export { RESTAPI, AUTH, JIRA_BUS };
+export { RESTAPI, AUTH };
 
 export { REST_API_URL, AUTH_API_URL };
