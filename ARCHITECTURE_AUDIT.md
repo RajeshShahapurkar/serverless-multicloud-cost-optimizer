@@ -30,7 +30,7 @@ The three worker processes are exposed as separate Compose services: `diworker`,
 | `environment` | `EnvironmentReportImporter` | Internal/manual |
 | `databricks` | `DatabricksReportImporter` | Provider-specific |
 
-The AWS importer inherits `CSVBaseReportImporter` and handles CUR-style CSV/Parquet report data. Azure has a direct Consumption API importer path plus an export-file path. GCP's registered importer is a report-file importer; do not describe it as direct live billing API ingestion without separately implementing and testing an acquisition/export workflow.
+The AWS importer inherits `CSVBaseReportImporter` and handles CUR-style CSV/Parquet report data. Azure has a direct Consumption API importer path plus an export-file path. Important correction from the follow-up source inspection: GCP's `GcpReportImporter` inherits `BaseReportImporter` and its `load_raw_data()` calls the adapter's `get_usage()` method, which queries the configured BigQuery billing export table. So GCP ingestion is query-based against a preconfigured BigQuery export, not a report-file importer. The detailed provider credential and billing setup is documented in `CLOUD_CREDENTIAL_SETUP.md`.
 
 ### Important product implication
 
