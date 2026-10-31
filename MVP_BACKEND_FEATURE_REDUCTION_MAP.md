@@ -98,3 +98,29 @@ The central REST API handler registration also includes many routes. Removing ha
 - The current GitHub-connected workflow can commit source changes, but cannot run Docker on the user's Windows machine.
 - The Compose overlay has not yet been checked with the user's local Docker Compose version.
 - No API routes, DB schemas, migrations, importer code or original Compose services have been deleted.
+
+## 8. Second UI reduction — direct route allow-list committed
+
+File changed: `ngui/ui/src/utils/routes/index.ts`.
+
+The route registry now explicitly registers only:
+- Authentication, invitation, registration, password recovery, email verification and first-run organization setup.
+- Home/dashboard.
+- Cloud data-source list, details and create/connect routes.
+- Expenses, cloud expenses, pool expenses and owner expenses.
+- Cross-cloud cost comparison.
+- Resources, resource details, resource perspectives and cluster types used by resource navigation.
+- Recommendations.
+- Basic settings, organization options and theme settings.
+- The not-found fallback.
+
+The registry no longer registers direct routes for ML workloads, BI exports, Jira/Slack connection pages, Kubernetes rightsizing, booking/calendar/environment workflows, power schedules, anomaly pages, tagging policy administration, and other unrelated feature pages. Their source files remain in the repository; this is route gating, not source deletion.
+
+A follow-up inspection found that the Resources menu marks cluster-type paths as active and the Expenses menu recognizes pool-expense paths. Those routes were retained in the final allow-list to avoid breaking the retained navigation.
+
+## 9. Important remaining caveats
+
+- This route allow-list has not yet been built or browser-tested locally.
+- Some shared UI/API modules still import Jira Bus actions and many feature action creators. They have not been removed because their references must be traced before changing the application bootstrap.
+- Some feature routes may be opened by internal links from retained pages. The local smoke test must exercise dashboard, data-source create/detail, expenses (including pool/cloud breakdown), resource details/perspectives, recommendations, settings, login and first-run setup.
+- A route hidden from the registry will fall through to the not-found route; this is intentional for excluded MVP pages but should be checked against any retained page links.
