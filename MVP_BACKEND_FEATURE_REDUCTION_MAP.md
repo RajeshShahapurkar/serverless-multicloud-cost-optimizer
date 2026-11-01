@@ -231,3 +231,26 @@ The next meaningful reduction is not another arbitrary worker profile. It is a c
 - Local user confirmed `docker compose -f docker-compose.unified.yml -f docker-compose.mvp.override.yml config -q` passed.
 - This validates Compose syntax and merged configuration only; it does not prove services build, start or pass health checks.
 - No backend services, API handlers, database volumes or cloud provider adapters were deleted in this audit.
+
+## 15. Seventh reduction — Jira / Slack UI entry points disconnected
+
+The following coordinated UI changes are committed on the MVP branch:
+
+- `ngui/ui/src/hooks/useApiData.ts`: removed the stale `JIRA_BUS` state selector and now reads from the retained REST API and Auth state slices only. This preserves the shared hook used by expenses, recommendations, invitations and other retained pages.
+- `ngui/ui/src/components/Integrations/Integrations.tsx`: removed Jira and Slack cards from the Integrations page. Google Calendar, BI export, GitLab, GitHub and Jenkins cards remain.
+- `ngui/ui/src/components/EmployeesTable/EmployeesTable.tsx`: removed Slack/Jira action buttons and their integration-specific imports; employee invitation, deletion and download actions remain.
+- `ngui/ui/src/components/SideModalManager/SideModals/index.ts`: unregistered the Slack integration modal.
+
+### Deliberately not removed
+
+- Slack/Jira employee connection flags and related backend response fields are not changed in the backend.
+- Jira/Slack source modules and GraphQL resolver files remain in the repository.
+- `ngui/server` still constructs the Slacker GraphQL data source and proxies `/jira_bus`.
+- Unified Compose still contains `slacker`, `jira-bus`, `jira-ui`, `slacker-executor`, and their proxy/dependency wiring.
+- nginx routes for these services remain.
+
+These backend and deployment components are intentionally retained for now: the current audit has not established that every GraphQL schema/resolver, background consumer, or other runtime caller is unused. Removing a container without updating all dependencies and proving the queue/API paths are unused would risk breaking startup or retained application behavior.
+
+### Validation status
+
+The four UI files above were updated on the feature branch. The GitHub connector does not execute the project's local frontend tests or TypeScript build, so no build/test success is claimed. The next local validation must run the UI's documented test and build scripts. After that, inspect the remaining references with repository-wide search before changing backend services or nginx.
