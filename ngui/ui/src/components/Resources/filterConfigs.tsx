@@ -31,7 +31,7 @@ import {
 import { EN_FORMAT, formatUTC, millisecondsToSeconds, moveDateToUTC, secondsToMilliseconds } from "utils/datetime";
 import { getMetaFormattedName } from "utils/metadata";
 import { getSearchParams } from "utils/network";
-import { isNumber } from "utils/validation";
+import { isNumber } from "utils/isNumber";
 
 const getSelectionAppliedValuesFromSearchParams = (parameterName) => {
   const { [parameterName]: value } = getSearchParams();
