@@ -1,10 +1,11 @@
 import Ajv from "ajv";
+import { isNumber } from "./isNumber";
+
+export { isNumber };
 import { perspectiveSchema } from "schemas";
 import { intl } from "translations/react-intl-config";
 import { COST_MODEL_MONEY_MAXIMUM_FRACTION_DIGITS } from "./constants";
 import { isWhitespaceString } from "./strings";
-
-export const isNumber = (value) => typeof value === "number" && !Number.isNaN(Number(value));
 
 export const isPositiveNumberOrZero = (number) => !Number.isNaN(number) && number >= 0;
 
