@@ -1,3 +1,4 @@
+import { MockedProvider } from "@apollo/client/testing";
 import { IntlProvider } from "react-intl";
 import { Provider } from "react-redux";
 import { MemoryRouter } from "react-router-dom";
@@ -13,11 +14,13 @@ const TestProvider = ({ children, state = {} }) => {
 
   return (
     <Provider store={store}>
-      <ThemeProviderWrapper>
-        <IntlProvider {...intlConfig}>
-          <MemoryRouter>{children}</MemoryRouter>
-        </IntlProvider>
-      </ThemeProviderWrapper>
+      <MockedProvider>
+        <ThemeProviderWrapper>
+          <IntlProvider {...intlConfig}>
+            <MemoryRouter>{children}</MemoryRouter>
+          </IntlProvider>
+        </ThemeProviderWrapper>
+      </MockedProvider>
     </Provider>
   );
 };
