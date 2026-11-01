@@ -7,10 +7,8 @@ import Box from "@mui/material/Box";
 import { FormattedMessage, useIntl } from "react-intl";
 import { REST_API_URL } from "api";
 import CaptionedCell from "components/CaptionedCell";
-import Icon from "components/Icon";
-import { JIRA } from "components/Integrations/Jira/Jira";
 import PoolLabel from "components/PoolLabel";
-import { DeleteEmployeeModal, SlackIntegrationModal } from "components/SideModalManager/SideModals";
+import { DeleteEmployeeModal } from "components/SideModalManager/SideModals";
 import Table from "components/Table";
 import TableCellActions from "components/TableCellActions";
 import TableLoader from "components/TableLoader";
@@ -19,16 +17,12 @@ import { useFetchAndDownload } from "hooks/useFetchAndDownload";
 import { useFormatIntervalTimeAgo } from "hooks/useFormatIntervalTimeAgo";
 import { useOpenSideModal } from "hooks/useOpenSideModal";
 import { useOrganizationInfo } from "hooks/useOrganizationInfo";
-import JiraIcon from "icons/JiraIcon";
-import SlackIcon from "icons/SlackIcon";
-import { EMPLOYEES_INVITE, getIntegrationsUrl } from "urls";
+import { EMPLOYEES_INVITE } from "urls";
 import { ROLE_PURPOSES, MEMBER, ORGANIZATION_ROLE_PURPOSES, SCOPE_TYPES, DOWNLOAD_FILE_FORMATS } from "utils/constants";
 
 const EmployeeCell = ({ rowId, rowOriginal }) => {
   const {
     id: employeeId,
-    slack_connected: isConnectedToSlack,
-    jira_connected: itConnectedToJira,
     name: employeeName,
     last_login: lastLogin,
   } = rowOriginal;
@@ -47,35 +41,9 @@ const EmployeeCell = ({ rowId, rowOriginal }) => {
     },
   ].filter(Boolean);
 
-  const icons = [
-    isConnectedToSlack && (
-      <Icon
-        key="slack-icon"
-        icon={SlackIcon}
-        hasLeftMargin
-        tooltip={{ show: true, messageId: "connectedToSlack" }}
-        dataTestId={`logo_slack_connected_${rowId}`}
-        fontSize="small"
-      />
-    ),
-    itConnectedToJira && (
-      <Icon
-        icon={JiraIcon}
-        key="jira-icon"
-        hasLeftMargin
-        tooltip={{ show: true, messageId: "connectedToJira" }}
-        dataTestId={`logo_jira_connected_${rowId}`}
-        fontSize="small"
-      />
-    ),
-  ].filter(Boolean);
-
   return (
     <CaptionedCell caption={caption} enableTextCopy>
-      <>
-        {employeeName}
-        {icons}
-      </>
+      {employeeName}
     </CaptionedCell>
   );
 };
@@ -244,22 +212,6 @@ const EmployeesTable = ({ isLoading = false, employees }) => {
                 variant: "contained",
                 dataTestId: "btn_invite",
                 requiredActions: ["MANAGE_INVITES"],
-              },
-              {
-                key: "slack",
-                icon: <SlackIcon />,
-                messageId: "slack",
-                action: () => openSideModal(SlackIntegrationModal),
-                type: "button",
-                dataTestId: "btn_slack",
-              },
-              {
-                key: "jira",
-                icon: <JiraIcon />,
-                messageId: "jira",
-                link: getIntegrationsUrl(JIRA),
-                type: "button",
-                dataTestId: "btn_jira",
               },
               {
                 key: "download",
