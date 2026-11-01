@@ -190,3 +190,44 @@ The retained UI components were inspected to identify what the MVP backend must 
 - The retained expense dashboard and resources pages therefore require historical/forecast expense APIs and ClickHouse-backed clean expense data; do not remove Metroculus/analytics or expense processing until their exact calls and data sources are traced.
 
 This audit identifies UI-to-API calls and data requirements, not the complete worker implementation graph. The next backend pass should map the exact REST handler methods for optimization details, resource permissions/visibility, resource metrics and expense breakdowns to their controllers and worker queues. No runtime validation has been performed.
+
+
+## 14. Sixth audit — unified Compose MVP startup inventory
+
+The unified Compose file defines 76 services and 9 named volumes. The existing MVP overlay assigns 18 independent optional workloads to the `extended` profile, leaving 58 services in the default service inventory before dependency/profile resolution.
+
+### Confirmed optional workloads already excluded
+
+- Gemini AI workers and scheduler.
+- BI exporter and scheduler.
+- Booking and calendar observers and schedulers.
+- Organization-violation workers and scheduler.
+- Power-schedule worker and scheduler.
+- Live-demo generator worker and scheduler.
+- Demo organization cleanup and dataset generators.
+
+The overlay changes only Compose profiles. It does not delete their source code, database volumes, API handlers or migrations.
+
+### Services that remain provisionally required
+
+- **Data stores and messaging:** etcd, MariaDB, MongoDB, RabbitMQ, Redis, InfluxDB, ClickHouse and MinIO.
+- **Bootstrap and application entry points:** configurator, auth, REST API, ngui and edge.
+- **Billing import:** report-import schedulers, diworker, diworker-raw and diworker-clean.
+- **Cost data and analytics:** ClickHouse-backed expense queries, Metroculus API/worker/scheduler and required expense-processing services.
+- **Resources and recommendations:** resource discovery, resource observation, resource metrics/permissions, optimization endpoints, RISP and traffic processing pending full caller/queue mapping.
+- **Shared platform paths:** Herald, Keeper, Katara, Insider, Diproxy, Subspector and other services still referenced by the edge/UI deployment graph.
+
+### Next safe reduction boundary
+
+The next meaningful reduction is not another arbitrary worker profile. It is a coordinated edge/API reduction:
+1. Map each retained UI route to its actual REST/API and proxy paths.
+2. Identify services used exclusively by routes removed from the MVP.
+3. Remove those routes from nginx and the edge dependency graph together.
+4. Confirm no retained UI module, background queue consumer or scheduled task calls the service.
+5. Run the UI test/build and Compose validation before committing the removal.
+
+### Validation status
+
+- Local user confirmed `docker compose -f docker-compose.unified.yml -f docker-compose.mvp.override.yml config -q` passed.
+- This validates Compose syntax and merged configuration only; it does not prove services build, start or pass health checks.
+- No backend services, API handlers, database volumes or cloud provider adapters were deleted in this audit.
