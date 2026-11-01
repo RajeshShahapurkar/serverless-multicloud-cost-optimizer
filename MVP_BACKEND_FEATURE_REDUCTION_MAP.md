@@ -167,3 +167,26 @@ The inspected UI bootstrap/store/reducer/API-index files no longer contain direc
 **Decision:** do not remove or profile these services in this pass. Removing a service while leaving a Compose `depends_on` entry makes the Compose graph invalid, and removing the dependency before confirming all runtime callers could leave a hidden feature broken. Keep the services and nginx routes until the remaining UI source references and any worker/queue consumers are checked. This audit is source inspection only; no Compose validation or runtime test has been run.
 
 Next: trace the retained Recommendations and Resources pages into their REST API endpoints and background workers. This will establish the minimum backend service set before making any further Compose changes.
+
+## 13. Fifth reduction audit — retained resource and recommendation dependencies
+
+The retained UI components were inspected to identify what the MVP backend must continue serving.
+
+### Resources and resource details
+- `Resources.tsx` composes expense breakdown, resource-count breakdown, tag/meta breakdown, date-range controls and expense summary containers.
+- `Resource.tsx` uses resource details, resource expenses, resource recommendations, allowed-action checks and resource metrics. It also contains environment/booking-related components; those are shared/conditional UI elements and must be traced before being removed.
+- `ResourceRecommendations.tsx` renders active and dismissed recommendation modules and calls resource-visibility actions.
+- Resource list/detail therefore depends on more than the generic resource CRUD endpoint: retain expense queries, resource metrics/metadata and permissions while this UI remains in scope.
+
+### Recommendations
+- `RecommendationDetailsService.ts` calls `getOptimizationDetails(organizationId, { type, status, limit, cloudAccountIds })`, then retrieves allowed actions for resource IDs returned by the recommendation.
+- It also calls `updateResourceVisibility` to dismiss/reactivate a recommendation for a resource.
+- `RecommendationsCard.tsx` links the dashboard to the full recommendations page and distinguishes cost, security and critical categories.
+
+**Decision:** keep the optimization/recommendation REST endpoints, resource allowed-action endpoint, resource visibility update endpoint, and the backend workers/providers that generate the recommendation data. Do not remove RISP, traffic, resource discovery, or related processing based only on their feature names. Recommendation types may rely on provider-specific data and recommendation classes.
+
+### Expense/dashboard dependencies
+- `OrganizationExpenses.tsx` displays last-month, this-month and forecast expense data and links to pool expense breakdown.
+- The retained expense dashboard and resources pages therefore require historical/forecast expense APIs and ClickHouse-backed clean expense data; do not remove Metroculus/analytics or expense processing until their exact calls and data sources are traced.
+
+This audit identifies UI-to-API calls and data requirements, not the complete worker implementation graph. The next backend pass should map the exact REST handler methods for optimization details, resource permissions/visibility, resource metrics and expense breakdowns to their controllers and worker queues. No runtime validation has been performed.
