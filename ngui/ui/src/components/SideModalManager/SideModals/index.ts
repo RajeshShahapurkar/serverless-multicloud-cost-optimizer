@@ -63,7 +63,6 @@ import SelectedBucketsInfoModal from "./SelectedBucketsInfoModal";
 import SelectStageOrMilestoneModal from "./SelectStageOrMilestoneModal";
 import ShareRunLinkModal from "./ShareRunLinkModal";
 import ShareSettingsModal from "./ShareSettingsModal";
-import SlackIntegrationModal from "./SlackIntegrationModal";
 import UnmarkEnvironmentModal from "./UnmarkEnvironmentModal";
 import UpdateCostModelModal from "./UpdateCostModelModal";
 import UpdateDataSourceCredentialsModal from "./UpdateDataSourceCredentialsModal";
@@ -81,7 +80,6 @@ export {
   UnmarkEnvironmentModal,
   DisconnectGoogleCalendarModal,
   ConnectGoogleCalendarModal,
-  SlackIntegrationModal,
   DisconnectCloudAccountModal,
   UpdateCostModelModal,
   DeletePoolModal,
