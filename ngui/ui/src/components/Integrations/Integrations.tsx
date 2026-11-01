@@ -1,10 +1,8 @@
 import Grid from "@mui/material/Grid";
 import ActionBar from "components/ActionBar";
 import PageContentWrapper from "components/PageContentWrapper";
-import IntegrationJiraContainer from "containers/IntegrationJiraContainer";
 import IntegrationsBIExportContainer from "containers/IntegrationsBIExportContainer";
 import IntegrationsGoogleCalendarContainer from "containers/IntegrationsGoogleCalendarContainer";
-import IntegrationsSlackContainer from "containers/IntegrationsSlackContainer";
 import { getSquareNodesStyle } from "utils/layouts";
 import { BI_EXPORT } from "./BIExport";
 import GitHub from "./GitHub";
@@ -14,8 +12,6 @@ import { GITLAB } from "./GitLab/GitLab";
 import { GOOGLE_CALENDAR } from "./GoogleCalendar/GoogleCalendar";
 import Jenkins from "./Jenkins";
 import { JENKINS } from "./Jenkins/Jenkins";
-import { JIRA } from "./Jira/Jira";
-import { SLACK_INTEGRATION } from "./Slack/Slack";
 
 const actionBarDefinition = {
   title: {
@@ -25,16 +21,8 @@ const actionBarDefinition = {
 
 const integrationsGridItems = [
   {
-    node: <IntegrationsSlackContainer />,
-    key: SLACK_INTEGRATION,
-  },
-  {
     node: <IntegrationsGoogleCalendarContainer />,
     key: GOOGLE_CALENDAR,
-  },
-  {
-    node: <IntegrationJiraContainer />,
-    key: JIRA,
   },
   {
     node: <IntegrationsBIExportContainer />,
