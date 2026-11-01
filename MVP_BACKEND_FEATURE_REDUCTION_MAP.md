@@ -144,3 +144,26 @@ The existing `ngui/ui/src/utils/routes/index.test.ts` checks that:
 - ML, BI, Jira/Slack, Kubernetes rightsizing, power scheduling, environment and anomaly routes are not registered.
 
 This test is present in the branch. It still needs to be executed in the user's/local CI environment; source inspection alone does not establish that it passes.
+
+## 12. Fourth reduction audit — Jira / Slack Compose dependency graph
+
+Files inspected on this branch:
+- `optscale-deploy/compose/docker-compose.unified.yml`
+- `optscale-deploy/compose/nginx.conf`
+- `ngui/ui/src/components/App/App.tsx`
+- `ngui/ui/src/store.ts`
+- `ngui/ui/src/reducers.ts`
+- `ngui/ui/src/api/index.ts`
+
+Confirmed remaining deployment references:
+- `ngui` still sets `SLACKER_ENDPOINT` and has `depends_on` entries for `slacker` and `jira-bus`.
+- `edge` still depends on `slacker`, `jira-bus`, and `jira-ui`.
+- nginx still proxies `/slacker/`, `/jira_bus/`, and `/jira_ui/`.
+- `jira-ui` depends on `jira-bus`.
+- `slacker-executor` depends on `slacker`.
+
+The inspected UI bootstrap/store/reducer/API-index files no longer contain direct Jira/Slack references. The route allow-list also excludes the Jira and Slack connection pages. However, this is not yet a full repository-wide proof that no retained component calls the Slack endpoint.
+
+**Decision:** do not remove or profile these services in this pass. Removing a service while leaving a Compose `depends_on` entry makes the Compose graph invalid, and removing the dependency before confirming all runtime callers could leave a hidden feature broken. Keep the services and nginx routes until the remaining UI source references and any worker/queue consumers are checked. This audit is source inspection only; no Compose validation or runtime test has been run.
+
+Next: trace the retained Recommendations and Resources pages into their REST API endpoints and background workers. This will establish the minimum backend service set before making any further Compose changes.
