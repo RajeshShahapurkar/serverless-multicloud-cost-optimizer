@@ -22,7 +22,6 @@ import { ROLE_PURPOSES, MEMBER, ORGANIZATION_ROLE_PURPOSES, SCOPE_TYPES, DOWNLOA
 
 const EmployeeCell = ({ rowId, rowOriginal }) => {
   const {
-    id: employeeId,
     name: employeeName,
     last_login: lastLogin,
   } = rowOriginal;
