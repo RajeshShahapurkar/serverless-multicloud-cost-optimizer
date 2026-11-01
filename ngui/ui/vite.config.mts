@@ -88,7 +88,7 @@ export default defineConfig(({ mode }) => {
     test: {
       server: {
         deps: {
-          inline: ["clsx", "@analytics/type-utils", "@flowmap.gl/data"]
+          inline: ["clsx", "@analytics/type-utils", "@flowmap.gl/data", "@flowmap.gl/layers"]
         }
       },
       environment: "jsdom",
