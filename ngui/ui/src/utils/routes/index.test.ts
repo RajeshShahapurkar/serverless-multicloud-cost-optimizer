@@ -6,15 +6,19 @@ describe("MVP route registry", () => {
   it("keeps authentication and account onboarding routes", () => {
     expect(registeredPages).toEqual(
       expect.arrayContaining([
-        "Login",
-        "Register",
+        "Authorization",
+        "AcceptInvitation",
+        "OrganizationsOverview",
+        "Invited",
         "PasswordRecovery",
         "EmailVerification",
+        "Initialize",
         "CloudAccountsOverview",
         "CloudAccountDetails",
         "ConnectCloudAccount",
       ])
     );
+    expect(registeredPages.filter((page) => page === "Authorization")).toHaveLength(2);
   });
 
   it("keeps the multi-cloud cost optimization journeys", () => {
@@ -28,24 +32,31 @@ describe("MVP route registry", () => {
         "CloudCostComparison",
         "Resources",
         "Resource",
+        "ClusterTypes",
+        "CreateClusterType",
+        "ResourcesPerspectives",
         "Recommendations",
+        "Settings",
+        "OrganizationOptions",
+        "ThemeSettings",
+        "Error",
       ])
     );
   });
 
   it("does not register unrelated feature routes", () => {
-    expect(registeredPages).not.toEqual(
-      expect.arrayContaining([
-        "MlTasks",
-        "MlModels",
-        "BIExports",
-        "ConnectJira",
-        "ConnectSlack",
-        "K8sRightsizing",
-        "PowerSchedules",
-        "Environments",
-        "Anomalies",
-      ])
-    );
+    for (const excluded of [
+      "MlTasks",
+      "MlModels",
+      "BIExports",
+      "ConnectJira",
+      "ConnectSlack",
+      "K8sRightsizing",
+      "PowerSchedules",
+      "Environments",
+      "Anomalies",
+    ]) {
+      expect(registeredPages).not.toContain(excluded);
+    }
   });
 });
